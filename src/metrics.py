@@ -39,6 +39,8 @@ def compute_sparsity(zs, norm):
     '''
     latent_dim = zs.size(-1)
     if norm:
-        zs = zs / zs.std(0)
+        zs_std = zs.std(0)
+        zs_std[zs_std == 0] = 1.0  # Évite la division par zéro en remplaçant les std nulles par 1
+        zs = zs / zs_std
     l1_l2 = (zs.abs().sum(-1) / zs.pow(2).sum(-1).sqrt()).mean()
     return (math.sqrt(latent_dim) - l1_l2) / (math.sqrt(latent_dim) - 1)

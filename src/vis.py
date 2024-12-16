@@ -3,6 +3,8 @@ import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
 import torch
 sns.set()
 import sys
@@ -74,7 +76,8 @@ def plot_latent_magnitude(xs, labels, path='', label=''):
     r = np.arange(D)
     for i, axis in enumerate(axes):
         axis.bar(r, xs[i], label=labels[i], width=barWidth, color=colors[i])
-        axis.grid(b=False)
+        #axis.grid(b=False)
+        axis.grid(visible=False)
         axis.set_ylim([0, 1.1])
         axis.tick_params(axis='y', which='major', labelsize=fontsize, length=12, width=3, direction='in')
         axis.tick_params(axis='x', which='major', labelsize=fontsize, length=12, width=3, direction='out')
@@ -88,3 +91,77 @@ def plot_latent_magnitude(xs, labels, path='', label=''):
     plt.rcParams.update({'font.size': fontsize})
     fig.savefig(path + '.pdf', bbox_inches='tight', transparent=False)
     plt.clf()
+
+def visualize_latent_space(model, data_loader, method='PCA', num_samples=1000, save_path=None):
+    """
+    Visualise l'espace latent en utilisant PCA ou t-SNE.
+
+    Args:
+        model: Le modèle entraîné.
+        data_loader: DataLoader contenant les données.
+        method: 'PCA' ou 'TSNE' pour choisir la méthode de réduction de dimension.
+        num_samples: Nombre d'échantillons à visualiser.
+        save_path: Chemin pour sauvegarder la figure (optionnel).
+    """
+    model.eval()
+    
+    latents = []
+    labels = []
+    
+    # Extraction des latents
+    for i, (data, label, _) in enumerate(data_loader):
+        print(f"[DEBUG] Data shape before flattening: {data.shape}")
+        data = data.view(data.size(0), -1).to(next(model.parameters()).device)
+        print(f"[DEBUG] Data shape after flattening: {data.shape}")
+        mu, _ = model.encode(data)
+        print(f"[DEBUG] Encoded mu shape: {mu.shape}")
+        latents.append(mu.detach().cpu().numpy())  # Correction ici pour éviter RuntimeError
+        labels.append(label.numpy())
+        
+        # Limite le nombre d'échantillons
+        if len(latents) * data.size(0) >= num_samples:
+            break
+    
+    # Concatène tous les latents et labels
+    latents = np.concatenate(latents, axis=0)[:num_samples]
+    labels = np.concatenate(labels, axis=0)[:num_samples]
+
+    # Réduction de dimension
+    if method == 'PCA':
+        reducer = PCA(n_components=2)
+    elif method == 'TSNE':
+        reducer = TSNE(n_components=2, perplexity=40, n_iter=3000, random_state=42)  # Plus stable
+    else:
+        raise ValueError("Méthode inconnue : choisissez 'PCA' ou 'TSNE'")
+    
+    reduced_latents = reducer.fit_transform(latents)
+    print(f"[DEBUG] Reduced latents shape: {reduced_latents.shape}")
+    print(f"[DEBUG] First 5 reduced latents: {reduced_latents[:5]}")
+
+    # Visualisation
+    plt.figure(figsize=(12, 12))  # Taille augmentée pour plus de clarté
+    scatter = plt.scatter(
+        reduced_latents[:, 0],
+        reduced_latents[:, 1],
+        c=labels,
+        cmap='tab10',
+        alpha=0.8,
+        s=20
+    )
+    plt.colorbar(scatter, label='Labels')
+    plt.xlim(-50, 50)  # Ajustez selon vos données
+    plt.ylim(-50, 50)
+    plt.title(f"Visualisation de l'espace latent avec {method}")
+    plt.xlabel("Dimension 1")
+    plt.ylabel("Dimension 2")
+    
+    # Ajout d'annotations pour clusters
+    for i, txt in enumerate(labels):
+        plt.annotate(txt, (reduced_latents[i, 0], reduced_latents[i, 1]), fontsize=8, alpha=0.6)
+    
+    # Sauvegarde de l'image
+    if save_path:
+        plt.savefig(save_path, dpi=300)  # Augmentez la résolution pour une image plus nette
+        print(f"Visualisation sauvegardée dans {save_path}")
+    else:
+        plt.show()

@@ -53,7 +53,9 @@ class VAE(nn.Module):
                 pz._chi2 = torch.distributions.Chi2(pz.df)  # fix from rsample
             px_z_params = self.dec(pz.sample(torch.Size([N])))
             means = get_mean_param(px_z_params)
-            samples = self.px_z(*px_z_params).sample(torch.Size([K]))
+            #samples = self.px_z(*px_z_params).sample(torch.Size([K]))
+            # Par la ligne suivante pour effectuer le clamp sur les paramètres :
+            samples = self.px_z(px_z_params[0], px_z_params[1].clamp(min=0)).sample(torch.Size([K]))
 
         return mean, \
             means.view(-1, *means.size()[2:]), \
@@ -72,7 +74,10 @@ class VAE(nn.Module):
         zs = qz_x.rsample(torch.Size([K]))
         if no_dec:
             return qz_x, zs
-        px_z = self.px_z(*self.dec(zs))
+        #ajout_ici
+        t = self.dec(zs)
+        #px_z = self.px_z(*self.dec(zs))
+        px_z = self.px_z(t[0], t[1].clamp(min=0))  # Ajout du clamp
         return qz_x, px_z, zs
 
     @property
